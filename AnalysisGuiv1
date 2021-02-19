@@ -1,0 +1,213 @@
+import tkinter as tk
+import xlrd
+import xlsxwriter
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+import numpy as np
+import csv
+import random
+
+#load default data. Change path here for your computer or input in the GUI
+mlb_data = []
+workb = xlrd.open_workbook('C://Users//camer//Desktop//ScrapingData//MLB_Data.xlsx')
+wksheet = workb.sheet_by_index(0)
+for i in range(wksheet.nrows):
+    mlb_data.append(wksheet.row_values(i))
+
+#make window and set width and height
+window = tk.Tk()
+window.title("MLB Data Analysis Tool")
+window.geometry("800x800")
+#widgets
+#title = tk.Label(window, text="MLB Data Analysis Tool")
+#labels
+tk.Label(window, text= "File Location (Optional)").grid(row=1)
+tk.Label(window, text= "X Attribute").grid(row=2)
+tk.Label(window, text= "Y Attribute").grid(row=3)
+attr_label = tk.Label(window, text= "Attributes: Player, Team, G, AB, R, H, 2B, 3B, HR, RBI, BB, SO, SB, CS, AVG, OBP, SLG")
+attr_label.grid(row=5)
+tk.Label(window, text= "Analysis Options").grid(row=6)
+#entries
+loc_entry = tk.Entry(window)
+loc_entry.grid(row=1, column = 1)
+rows_entry = tk.Entry(window)
+rows_entry.grid(row=2, column = 1)
+cols_entry = tk.Entry(window)
+cols_entry.grid(row=3, column = 1)
+type_entry=tk.Entry(window)
+#drop down menu
+
+optionList = ('Linear Regression', '2nd Deg Polynomial Regression', '3rd Deg Polynomial Regression')
+analysis_variable = tk.StringVar()
+analysis_variable.set(optionList[0])
+analysis_option_menu = tk.OptionMenu(window, analysis_variable, *optionList)
+analysis_option_menu.grid(row=6, column=1)
+
+
+def make_path_readable(path):
+    splt = path.split('\\')
+    print(splt)
+    file_type = splt[-1].split('.')
+    file_type = file_type[1] 
+    new = '//'.join(splt)
+    
+    return new, file_type
+#get the data from the file
+def fetchData():
+    #get the data dependent on the filetype, if none do mlb data default
+    if len(loc_entry.get()) > 1:
+            location, filetype = make_path_readable(loc_entry.get())
+            if filetype == 'txt':
+                loc = open(location).read()
+                raw = loc.split('\n')
+                data = []
+                for i in range(len(raw)):
+                    data.append(raw[i].split(', '))
+                #remove empty lists that get added for some reason
+                data = [dp for dp in data if dp != ['']]
+
+            elif filetype == 'xlsx' or filetype == 'xls':
+                data = []
+                wb = xlrd.open_workbook(location)
+                sheet = wb.sheet_by_index(0)
+                print(sheet.nrows)
+                for i in range(sheet.nrows):
+                    data.append(sheet.row_values(i))
+            elif filetype == 'csv':
+                with open(location) as csv_file:
+                    csv_reader = csv.reader(csv_file, delimiter=',')
+                    data = []
+                    for row in csv_reader:
+                        data.append(row)
+                print(data)
+
+    else:
+        data = mlb_data
+    attr_label.configure(text=data[0])
+    #allow text or index for the attrs:
+    try:
+        r = int(rows_entry.get())
+        c = int(cols_entry.get())
+    except ValueError:
+        r = data[0].index(rows_entry.get())
+        c = data[0].index(cols_entry.get())
+    
+    print(data)
+    x = []
+    y = []
+    for i in range(len(data)):
+        if i > 0:
+            x.append(float(data[i][int(c)]))
+            y.append(float(data[i][int(r)]))
+
+    labs = [data[0][int(c)], data[0][int(r)]]
+    return x, y, labs
+
+#prediction values entry
+prediction_values_entry = tk.Entry(window)
+
+#make file of 'test data' for testing 
+with open('iris_test_file.csv', mode='w') as test:
+    writer = csv.writer(test, delimiter=',')
+    for  i in range(50):
+        writer.writerow([random.uniform(0,2)])
+
+def predict_values():#take comma sep vals or files
+    values = prediction_values_entry.get()
+    pred_vals = []
+    x, y, labs = fetchData()
+    #file locs dont have commas
+    if len(values.split(',')) > 1:
+        pred_vals = values.split(',')
+        for i in range(len(pred_vals)):
+            pred_vals[i] = float(pred_vals[i])
+    else:
+        location, filetype = make_path_readable(values)
+        if filetype == 'txt':
+            loc = open(location).read()
+            raw = loc.split('\n')
+            for i in range(len(raw)):
+                pred_vals.append(raw[i].split(', '))
+            #remove empty lists that get added for some reason
+            pred_vals = [dp for dp in pred_vals if dp != ['']]
+
+        elif filetype == 'xlsx' or filetype == 'xls':
+            wb = xlrd.open_workbook(location)
+            sheet = wb.sheet_by_index(0)
+            print(sheet.nrows)
+            for i in range(sheet.nrows):
+                pred_vals.append(sheet.row_values(i))
+        elif filetype == 'csv':
+            with open(location) as csv_file:
+                csv_reader = csv.reader(csv_file, delimiter=',')
+                for row in csv_reader:
+                    pred_vals.append(row)
+    
+            pred_vals = [dp for dp in pred_vals if dp != []]
+            print(pred_vals)
+    
+    x = np.array(x).reshape(-1, 1)
+    y = np.array(y).reshape(-1, 1)
+    #string to float
+    for i in range(len(pred_vals)):
+        for j in range(len(pred_vals[i])):
+            pred_vals[i][j] = float(pred_vals[i][j])
+
+    choice = analysis_variable.get()
+    if choice == 'Linear Regression':
+        lr = LinearRegression()
+        lr.fit(x, y)
+        preds = lr.predict(pred_vals)
+        print(preds)
+
+predict_button = tk.Button(window, text= 'Predict', command = predict_values)
+
+def visualize_and_analyze(x, y, labs):
+    figure = plt.Figure(figsize=(5,5), dpi=100)
+    ax = figure.add_subplot(111)
+    #plot data
+    ax.scatter(x,y)
+    ax.set_xlabel(labs[0])
+    ax.set_ylabel(labs[1])
+    #plot analysis line
+    x = np.array(x).reshape(-1, 1)
+    y = np.array(y).reshape(-1, 1)
+    analysis_choice = analysis_variable.get()
+
+    if analysis_choice == 'Linear Regression':
+        lr = LinearRegression()
+        lr.fit(x,y)
+        ax.plot(x, lr.predict(x), color='k')
+    elif analysis_choice == '2nd Deg Polynomial Regression':
+        poly_feat = PolynomialFeatures(degree=2)
+        x_poly = poly_feat.fit_transform(x)
+        lr = LinearRegression()
+        lr.fit(x_poly, y)
+        ax.plot(x, lr.predict(x_poly), color='k')
+    elif analysis_choice == '3rd Deg Polynomial Regression':
+        poly_feat = PolynomialFeatures(degree=3)
+        x_poly = poly_feat.fit_transform(x)
+        lr = LinearRegression()
+        lr.fit(x_poly, y)
+        ax.plot(x, lr.predict(x_poly), color='k')
+
+    canvas = FigureCanvasTkAgg(figure, window)
+    canvas.get_tk_widget().grid(row=9, column=0)
+    canvas.draw()
+    figure.clf()
+    
+    ax.set_title('Data')
+    #show entry, label, and button
+    tk.Label(window, text='Values to Predict').grid(row = 9, column=1)
+    prediction_values_entry.grid(row=9, column = 2)
+    predict_button.grid(row=10, column = 2)
+
+def run():
+    x,y, labels = fetchData()
+    visualize_and_analyze(x, y, labels)
+
+enter_button = tk.Button(window, text="Enter", command = run).grid(row=7, column=1)
+
+window.mainloop()
